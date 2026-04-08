@@ -1,208 +1,227 @@
+// ==========================================
+// 🚀 DMR4 QUANTUM - CORE ENGINE
+// ==========================================
 import { firebaseConfig } from './config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
 import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
-console.log("🔥 APP ARRANCANDO");
+// Inicialización de Firebase
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
+const userPortfolioRef = ref(db, 'portfolio/config');
 
-// =========================
-// 🔥 INICIALIZACIÓN SEGURA
-// =========================
-let app, db, userPortfolioRef;
-
-try {
-    app = initializeApp(firebaseConfig);
-    db = getDatabase(app);
-    userPortfolioRef = ref(db, 'portfolio/config');
-    console.log("✅ Firebase OK");
-} catch (e) {
-    console.log("⚠️ Firebase error:", e);
-}
-
-// =========================
-// 💼 PORTAFOLIO
-// =========================
+// Estado global del Portafolio
 let portafolio = [
-{ ticker: 'ECOPETROL', nombre: 'Ecopetrol', cantidad: 1000, precio: 2350, color: '#39ff14' },
-{ ticker: 'AAPL', nombre: 'Apple Inc.', cantidad: 10, precio: 720000, color: '#00f2ff' },
-{ ticker: 'GLD', nombre: 'ETF Oro', cantidad: 5, precio: 950000, color: '#ffbd00' },
-{ ticker: 'BTC', nombre: 'Bitcoin', cantidad: 0.02, precio: 270000000, color: '#f7931a' }
+    { ticker: 'ECOPETROL', nombre: 'Ecopetrol', cantidad: 1000, precio: 2350, color: '#39ff14', icon: 'fa-oil-well' },
+    { ticker: 'AAPL', nombre: 'Apple Inc.', cantidad: 10, precio: 720000, color: '#00f2ff', icon: 'fa-apple' },
+    { ticker: 'GLD', nombre: 'ETF Oro', cantidad: 5, precio: 950000, color: '#ffbd00', icon: 'fa-coins' },
+    { ticker: 'BTC', nombre: 'Bitcoin', cantidad: 0.02, precio: 270000000, color: '#f7931a', icon: 'fa-bitcoin' }
 ];
 
 let myChart;
 let historyChart;
-let historyData = [];
+let historyData = [19000000, 19200000, 18900000, 19500000, 19700000];
 
-// =========================
-// 🚀 INICIO CONTROLADO
-// =========================
-window.onload = () => {
-
-    console.log("📊 DOM listo");
-
-    if (typeof Chart === "undefined") {
-        console.log("❌ Chart NO cargó");
-        return;
-    }
-
-    console.log("✅ Chart OK");
-
-    generarInputs();
-    actualizarInterfaz(true);
-
-    // iniciar precios
-    setInterval(updateLivePrices, 3000);
-
-    // Firebase (opcional)
-    if (userPortfolioRef) {
-        onValue(userPortfolioRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data) {
-                portafolio.forEach(a => {
-                    if(data[a.ticker] !== undefined) {
-                        a.cantidad = data[a.ticker];
-                    }
-                });
-            }
-            actualizarInterfaz(true);
-        });
-    }
-};
-
-// =========================
-// 🔄 PRECIOS
-// =========================
+// ==========================================
+// 🔄 SIMULACIÓN DE MERCADO (LIVE)
+// ==========================================
 function updateLivePrices() {
     portafolio.forEach(asset => {
-        const fluctuation = 1 + (Math.random() * 0.02 - 0.01);
-        asset.precio = Math.round(asset.precio * fluctuation);
+        const oldPrice = asset.precio;
+        // Simula volatilidad de mercado del +/- 1.2%
+        const fluctuation = 1 + (Math.random() * 0.024 - 0.012);
+        asset.precio = Math.round(oldPrice * fluctuation);
+
+        // Control de límites para activos volátiles
+        if (asset.ticker === 'BTC' && asset.precio > 350000000) asset.precio *= 0.95;
+        if (asset.ticker === 'AAPL' && asset.precio > 900000000) asset.precio *= 0.98;
     });
 
     actualizarInterfaz(false);
 }
 
-// =========================
-// 🎛 INPUTS
-// =========================
+// Actualizar precios cada 3 segundos
+setInterval(updateLivePrices, 3000);
+
+// ==========================================
+// 🎛 GENERACIÓN DE INTERFAZ DE USUARIO
+// ==========================================
 function generarInputs() {
     const contenedor = document.getElementById('controls');
-    if(!contenedor) return;
+    if (!contenedor) return;
 
     contenedor.innerHTML = '';
 
-    portafolio.forEach((a, i) => {
-        contenedor.innerHTML += `
-        <div class="input-group">
-            <label>${a.nombre} (${a.ticker})</label>
-            <input type="number" id="input-${i}" value="${a.cantidad}">
-        </div>`;
+    portafolio.forEach((a, index) => {
+        const div = document.createElement('div');
+        div.className = 'control-group';
+        div.style = "margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; background: rgba(255,255,255,0.05); padding: 8px; border-radius: 5px;";
+        div.innerHTML = `
+            <span style="font-size: 0.9rem;"><i class="fa-solid ${a.icon}" style="color: ${a.color}"></i> ${a.ticker}</span>
+            <input type="number" step="any" id="input-${index}" value="${a.cantidad}" 
+                style="background: #111; color: white; border: 1px solid var(--border-color); width: 80px; text-align: right; padding: 4px; border-radius: 4px;">
+        `;
+        contenedor.appendChild(div);
     });
 }
 
-// =========================
-// ☁️ GUARDAR
-// =========================
+// ==========================================
+// ☁️ SYNC CON FIREBASE (MODO GLOBAL)
+// ==========================================
 window.actualizarTodo = function() {
-    if (!userPortfolioRef) return;
+    let saveObj = {};
 
-    let data = {};
-
-    portafolio.forEach((a, i) => {
-        const val = parseFloat(document.getElementById(`input-${i}`).value) || 0;
-        a.cantidad = val;
-        data[a.ticker] = val;
-    });
-
-    set(userPortfolioRef, data);
-};
-
-// =========================
-// 📊 INTERFAZ
-// =========================
-function actualizarInterfaz(updateHistory = false) {
-
-    let total = 0;
-    const labels = [];
-    const values = [];
-    const colors = [];
-
-    portafolio.forEach(a => {
-        const val = a.precio * a.cantidad;
-        total += val;
-        labels.push(a.ticker);
-        values.push(val);
-        colors.push(a.color);
-    });
-
-    document.getElementById("total-value").innerText =
-        `$${Math.round(total).toLocaleString()} COP`;
-
-    if (updateHistory) {
-        historyData.push(total);
-        if (historyData.length > 7) historyData.shift();
-    }
-
-    renderCharts(labels, values, colors, total);
-    analizarRiesgo(total);
-}
-
-// =========================
-// 📈 GRÁFICAS
-// =========================
-function renderCharts(labels, data, colors, total) {
-
-    const ctx = document.getElementById("assetChart");
-
-    if (ctx) {
-        if (myChart) myChart.destroy();
-
-        myChart = new Chart(ctx, {
-            type: "doughnut",
-            data: {
-                labels,
-                datasets: [{
-                    data,
-                    backgroundColor: colors
-                }]
-            }
-        });
-    }
-
-    const ctx2 = document.getElementById("historyChart");
-
-    if (ctx2) {
-        if (historyChart) historyChart.destroy();
-
-        historyChart = new Chart(ctx2, {
-            type: "line",
-            data: {
-                labels: historyData.map((_, i) => i + 1),
-                datasets: [{
-                    data: historyData,
-                    borderColor: "#00f2ff",
-                    fill: true
-                }]
-            }
-        });
-    }
-}
-
-// =========================
-// 🧠 RIESGO
-// =========================
-function analizarRiesgo(total) {
-
-    const actions = document.getElementById("rebalance-actions");
-    actions.innerHTML = "";
-
-    portafolio.forEach(a => {
-        const peso = (a.precio * a.cantidad) / total;
-
-        if (peso > 0.4) {
-            actions.innerHTML += `<li style="color:red;">⚠️ ${a.ticker} alto</li>`;
+    portafolio.forEach((a, index) => {
+        const input = document.getElementById(`input-${index}`);
+        if (input) {
+            const val = parseFloat(input.value) || 0;
+            a.cantidad = val;
+            saveObj[a.ticker] = val;
         }
     });
 
-    if (!actions.innerHTML) {
-        actions.innerHTML = "<li>✅ Riesgo balanceado</li>";
+    set(userPortfolioRef, saveObj)
+        .then(() => {
+            console.log("✅ Datos sincronizados en Firebase");
+            actualizarInterfaz(true);
+            
+            // Efecto visual de guardado
+            const btn = document.getElementById('btn-recalc');
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Sincronizado';
+            setTimeout(() => {
+                btn.innerHTML = '<i class="fa-solid fa-cloud-arrow-up"></i> Sincronizar Cantidades';
+            }, 2000);
+        })
+        .catch(err => console.error("Error al guardar:", err));
+};
+
+// ==========================================
+// 📊 MOTOR DE RENDERIZADO E IA DE RIESGO
+// ==========================================
+function actualizarInterfaz(updateHistory = false) {
+    let valorTotal = 0;
+    const etiquetas = [];
+    const montos = [];
+    const colores = [];
+
+    portafolio.forEach(a => {
+        const subtotal = a.precio * a.cantidad;
+        valorTotal += subtotal;
+        etiquetas.push(a.ticker);
+        montos.push(subtotal);
+        colores.push(a.color);
+    });
+
+    // Actualizar Panel de Valor Total
+    const totalTxt = document.getElementById('total-value');
+    if (totalTxt) {
+        totalTxt.innerText = `$${valorTotal.toLocaleString('es-CO')} COP`;
+    }
+
+    // Análisis Ecopetrol (Dividendos)
+    const eco = portafolio.find(p => p.ticker === 'ECOPETROL');
+    if (eco) {
+        const divAnual = eco.cantidad * 312; // Dividendo estimado por acción
+        const divTxt = document.getElementById('dividend-annual');
+        const yieldTxt = document.getElementById('dividend-yield');
+
+        if (divTxt) divTxt.innerText = `$${divAnual.toLocaleString('es-CO')} COP`;
+        if (yieldTxt) yieldTxt.innerText = `${((312 / eco.precio) * 100).toFixed(2)}%`;
+    }
+
+    if (updateHistory) {
+        historyData.push(valorTotal);
+        if (historyData.length > 7) historyData.shift();
+    }
+
+    renderCharts(etiquetas, montos, colores, valorTotal);
+    analizarRiesgo(portafolio, valorTotal);
+}
+
+function renderCharts(labels, data, colors, total) {
+    // Gráfico de Dona (DMR4 Assets)
+    const ctx = document.getElementById('assetChart');
+    if (ctx) {
+        if (myChart) myChart.destroy();
+        myChart = new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{ data: data, backgroundColor: colors, borderWidth: 0 }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: (item) => `${item.label}: $${item.raw.toLocaleString()} COP (${((item.raw / total) * 100).toFixed(1)}%)`
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Gráfico Histórico
+    const ctxH = document.getElementById('historyChart');
+    if (ctxH) {
+        if (historyChart) historyChart.destroy();
+        historyChart = new Chart(ctxH, {
+            type: 'line',
+            data: {
+                labels: ['L', 'M', 'M', 'J', 'V', 'S', 'Hoy'],
+                datasets: [{
+                    label: 'Patrimonio',
+                    data: historyData,
+                    borderColor: '#00f2ff',
+                    backgroundColor: 'rgba(0, 242, 255, 0.1)',
+                    fill: true,
+                    tension: 0.4
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false } },
+                scales: { y: { display: false }, x: { grid: { display: false } } }
+            }
+        });
     }
 }
+
+function analizarRiesgo(cartera, total) {
+    const actions = document.getElementById('rebalance-actions');
+    if (!actions) return;
+    actions.innerHTML = '';
+
+    cartera.forEach(a => {
+        const peso = (a.precio * a.cantidad / total) * 100;
+        if (peso > 35) {
+            actions.innerHTML += `<li style="color:#ff4444; margin-bottom: 5px;">⚠️ <strong>${a.ticker}</strong> excedido (${peso.toFixed(1)}%). Recomendado reducir.</li>`;
+        }
+    });
+
+    if (actions.innerHTML === '') {
+        actions.innerHTML = '<li style="color:var(--neon-green);">✅ Portafolio balanceado. Sin alertas de IA.</li>';
+    }
+}
+
+// ==========================================
+// 🔄 CARGA INICIAL DESDE FIREBASE
+// ==========================================
+onValue(userPortfolioRef, (snapshot) => {
+    const data = snapshot.val();
+    if (data) {
+        portafolio.forEach(a => {
+            if (data[a.ticker] !== undefined) {
+                a.cantidad = data[a.ticker];
+            }
+        });
+    }
+
+    generarInputs();
+    actualizarInterfaz(true);
+}, { onlyOnce: true });
+
