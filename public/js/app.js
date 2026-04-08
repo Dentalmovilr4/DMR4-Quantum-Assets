@@ -1,198 +1,182 @@
 import { firebaseConfig } from './config.js';
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
-import { getDatabase, ref, set, onValue } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
+import { 
+    getDatabase, ref, set, onValue 
+} from "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js";
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
-const userPortfolioRef = ref(db, 'portfolio/config');
 
-// ESTRUCTURA DE ACTIVOS CON PRECIOS BASE
+// ==========================
+// 👤 USUARIO SIMPLE (ID)
+// ==========================
+let userId = localStorage.getItem("dmr4_user");
+
+if (!userId) {
+    userId = "user_" + Math.random().toString(36).substring(2, 10);
+    localStorage.setItem("dmr4_user", userId);
+}
+
+const userRef = ref(db, `users/${userId}/portfolio`);
+
+// ==========================
+// 💼 PORTAFOLIO BASE
+// ==========================
 let portafolio = [
-    { ticker: 'ECOPETROL', nombre: 'Ecopetrol', cantidad: 1000, precio: 2350, color: '#39ff14', icon: 'fa-oil-well' },
-    { ticker: 'AAPL', nombre: 'Apple Inc.', cantidad: 10, precio: 720000, color: '#00f2ff', icon: 'fa-apple' },
-    { ticker: 'GLD', nombre: 'ETF Oro', cantidad: 5, precio: 950000, color: '#ffbd00', icon: 'fa-coins' },
-    { ticker: 'BTC', nombre: 'Bitcoin', cantidad: 0.02, precio: 270000000, color: '#f7931a', icon: 'fa-bitcoin' }
+    { ticker: 'BTC', tipo: 'derivado', riesgo: 'alto', cantidad: 0.02, precio: 0 },
+    { ticker: 'ETH', tipo: 'derivado', riesgo: 'alto', cantidad: 0.5, precio: 0 },
+    { ticker: 'USDT', tipo: 'renta_fija', riesgo: 'bajo', cantidad: 1000, precio: 1 },
 ];
 
-let myChart;
-let historyChart;
-let historyData = [19000000, 19200000, 18900000, 19500000, 19700000]; // Datos base para el gráfico
+// ==========================
+// 📡 PRECIOS BINANCE
+// ==========================
+async function getPrices() {
+    const res = await fetch("https://api.binance.com/api/v3/ticker/price");
+    const data = await res.json();
 
-// --- MOTOR DE PRECIOS EN VIVO (SIMULADO) ---
-// En producción, aquí conectarías con una API real como Binance o Yahoo Finance
-function updateLivePrices() {
-    portafolio.forEach(asset => {
-        const oldPrice = asset.precio;
-        // Simular fluctuación entre -1% y +1.2%
-        const fluctuation = 1 + (Math.random() * 0.022 - 0.01); 
-        asset.precio = Math.round(oldPrice * fluctuation);
-        
-        // Pequeña corrección para BTC y Apple para que no suban infinitamente en la simulación
-        if (asset.ticker === 'BTC' && asset.precio > 300000000) asset.precio *= 0.98;
-        if (asset.ticker === 'AAPL' && asset.precio > 800000000) asset.precio *= 0.99;
+    let prices = {};
+    data.forEach(p => {
+        prices[p.symbol] = parseFloat(p.price);
     });
-    
-    // Actualizar la interfaz sin guardar en Firebase (solo cambian precios, no cantidades)
-    actualizarInterfaz(false); 
+
+    return prices;
 }
 
-// Iniciar actualización cada 3 segundos
-setInterval(updateLivePrices, 3000);
+// ==========================
+// 🔄 ACTUALIZAR PRECIOS
+// ==========================
+async function updateLivePrices() {
+    try {
+        const prices = await getPrices();
 
-// --- FUNCIONES DE INTERFAZ ---
+        portafolio.forEach(a => {
+            if (a.ticker === 'BTC') a.precio = prices['BTCUSDT'] * 4000;
+            if (a.ticker === 'ETH') a.precio = prices['ETHUSDT'] * 4000;
+            if (a.ticker === 'USDT') a.precio = 4000;
+        });
+
+        actualizarInterfaz();
+
+    } catch (e) {
+        console.log("Error precios:", e);
+    }
+}
+
+setInterval(updateLivePrices, 5000);
+
+// ==========================
+// 🧠 INPUTS
+// ==========================
 function generarInputs() {
     const contenedor = document.getElementById('controls');
-    if(!contenedor) return;
     contenedor.innerHTML = '';
-    portafolio.forEach((a, index) => {
+
+    portafolio.forEach((a, i) => {
         contenedor.innerHTML += `
-            <div class="input-group">
-                <label>
-                    <span><i class="fab ${a.icon} muted-icon"></i> ${a.nombre}</span>
-                    <span class="ticker-label">${a.ticker}</span>
-                </label>
-                <input type="number" id="input-${index}" value="${a.cantidad}" step="any">
-            </div>`;
+        <div class="input-group">
+            <label>${a.ticker} (${a.tipo})</label>
+            <input type="number" id="input-${i}" value="${a.cantidad}">
+        </div>`;
     });
 }
 
-// Esta función lee los inputs y guarda en Firebase
+// ==========================
+// ☁️ GUARDAR
+// ==========================
 window.actualizarTodo = function() {
-    let saveObj = {};
-    portafolio.forEach((a, index) => {
-        const input = document.getElementById(`input-${index}`);
-        if(input) {
-            const val = parseFloat(input.value) || 0;
-            a.cantidad = val;
-            saveObj[a.ticker] = val;
-        }
+    let data = {};
+
+    portafolio.forEach((a, i) => {
+        const val = parseFloat(document.getElementById(`input-${i}`).value) || 0;
+        a.cantidad = val;
+        data[a.ticker] = val;
     });
 
-    // Guardar nuevas cantidades en Firebase
-    set(userPortfolioRef, saveObj).then(() => {
-        console.log("Cantidades sincronizadas.");
-        actualizarInterfaz(true); // Forzar actualización de gráficos
-    });
-}
+    set(userRef, data);
+};
 
-// Esta función solo renderiza los datos actuales
-function actualizarInterfaz(updateHistory = false) {
-    let valorTotal = 0;
-    const etiquetas = [];
-    const montos = [];
-    const colores = [];
+// ==========================
+// 💰 CALCULO
+// ==========================
+function actualizarInterfaz() {
+
+    let total = 0;
 
     portafolio.forEach(a => {
-        const subtotal = a.precio * a.cantidad;
-        valorTotal += subtotal;
-        etiquetas.push(a.ticker);
-        montos.push(subtotal);
-        colores.push(a.color);
+        a.valor = a.precio * a.cantidad;
+        total += a.valor;
     });
 
-    // Actualizar Valor Total con efecto visual
-    const totalTxt = document.getElementById('total-value');
-    if(totalTxt) {
-        const oldTotal = parseFloat(totalTxt.innerText.replace(/[^0-9.]/g, '')) || 0;
-        totalTxt.innerText = `$${valorTotal.toLocaleString()} COP`;
-        // Efecto de color según sube o baja el total
-        totalTxt.className = valorTotal >= oldTotal ? 'neon-text price-up' : 'neon-text price-down';
-    }
-    
-    // Actualizar Dividendos Ecopetrol
-    const eco = portafolio.find(p => p.ticker === 'ECOPETROL');
-    const divAnual = eco.cantidad * 312; // Valor dividendo estático por ahora
-    const divTxt = document.getElementById('dividend-annual');
-    const yieldTxt = document.getElementById('dividend-yield');
-    
-    if(divTxt) divTxt.innerText = `$${divAnual.toLocaleString()} COP`;
-    if(yieldTxt) yieldTxt.innerText = `${((312/eco.precio)*100).toFixed(1)}%`;
+    document.getElementById("total-value").innerText =
+        `$${Math.round(total).toLocaleString()} COP`;
 
-    // Actualizar Gráfico Histórico si es necesario
-    if (updateHistory) {
-        historyData.push(valorTotal);
-        if (historyData.length > 7) historyData.shift(); // Mantener solo 7 días
-    }
-
-    renderCharts(etiquetas, montos, colores, valorTotal);
-    analizarRiesgo(portafolio, valorTotal);
+    analizarRiesgo(total);
 }
 
-function renderCharts(labels, data, colors, total) {
-    // Gráfico de Dona
-    const ctx = document.getElementById('assetChart');
-    if (ctx) {
-        if (myChart) myChart.destroy();
-        myChart = new Chart(ctx.getContext('2d'), {
-            type: 'doughnut',
-            data: { labels: labels, datasets: [{ data: data, backgroundColor: colors, borderColor: '#11141f', borderWidth: 3 }] },
-            options: { 
-                plugins: { 
-                    legend: { position: 'bottom', labels: { color: '#c9d1d9', font: { family: "'SF Mono', monospace", size: 10 } } },
-                    tooltip: {
-                        callbacks: {
-                            label: (item) => ` ${item.label}: $${item.raw.toLocaleString()} COP (${((item.raw/total)*100).toFixed(1)}%)`
-                        }
-                    }
-                }, 
-                maintainAspectRatio: false,
-                cutout: '70%' // Dona más fina
-            }
-        });
-    }
+// ==========================
+// 🧠 MOTOR PRO
+// ==========================
+function analizarRiesgo(total) {
 
-    // Gráfico Histórico
-    const ctxH = document.getElementById('historyChart');
-    if (ctxH) {
-        if (historyChart) historyChart.destroy();
-        historyChart = new Chart(ctxH.getContext('2d'), {
-            type: 'line',
-            data: {
-                labels: ['L', 'M', 'M', 'J', 'V', 'S', 'Hoy'],
-                datasets: [{ 
-                    label: 'Patrimonio COP', 
-                    data: historyData, 
-                    borderColor: '#00f2ff', 
-                    backgroundColor: 'rgba(0, 242, 255, 0.1)',
-                    fill: true,
-                    tension: 0.4,
-                    pointBackgroundColor: '#00f2ff',
-                    pointRadius: 3
-                }]
-            },
-            options: { 
-                scales: { 
-                    y: { display: false }, 
-                    x: { ticks: { color: '#8b949e', font: { size: 10 } }, grid: { display: false } } 
-                }, 
-                plugins: { legend: { display: false } },
-                maintainAspectRatio: false 
-            }
-        });
-    }
-}
-
-function analizarRiesgo(cartera, total) {
-    const actions = document.getElementById('rebalance-actions');
+    const actions = document.getElementById("rebalance-actions");
     actions.innerHTML = '';
-    cartera.forEach(a => {
-        const peso = (a.precio * a.cantidad / total) * 100;
-        if (peso > 40) {
-            actions.innerHTML += `<li style="color:#ff4444; font-size:0.8rem;">⚠️ ALERTA: Concentración alta en ${a.ticker} (${peso.toFixed(1)}%). Diversificar sugerido.</li>`;
+
+    let riesgoTotal = 0;
+
+    portafolio.forEach(a => {
+
+        let peso = a.valor / total;
+
+        let r = (a.riesgo === 'alto') ? 3 :
+                (a.riesgo === 'medio') ? 2 : 1;
+
+        riesgoTotal += peso * r;
+
+        if (peso > 0.5) {
+            actions.innerHTML += `<li style="color:red;">⚠️ Sobreexposición ${a.ticker}</li>`;
         }
     });
-    if(actions.innerHTML === '') actions.innerHTML = '<li style="font-size:0.8rem;">✅ Riesgo de cartera optimizado.</li>';
+
+    // 🎯 REBALANCEO
+    portafolio.forEach(a => {
+        let target = 1 / portafolio.length;
+        let actual = a.valor / total;
+
+        let diff = target - actual;
+        let monto = diff * total;
+
+        if (Math.abs(monto) > total * 0.05) {
+            if (monto > 0) {
+                actions.innerHTML += `<li style="color:green;">🟢 Comprar ${a.ticker} $${Math.round(monto)}</li>`;
+            } else {
+                actions.innerHTML += `<li style="color:red;">🔴 Vender ${a.ticker} $${Math.round(Math.abs(monto))}</li>`;
+            }
+        }
+    });
+
+    let nivel = riesgoTotal < 1.5 ? "🟢 BAJO" :
+                riesgoTotal < 2.3 ? "🟡 MEDIO" :
+                "🔴 ALTO";
+
+    actions.innerHTML += `<li>🧠 Riesgo: ${nivel}</li>`;
 }
 
-// INICIO SINCRONIZADO CON FIREBASE
-onValue(userPortfolioRef, (snapshot) => {
-    const data = snapshot.val();
+// ==========================
+// 🔄 CARGA USUARIO
+// ==========================
+onValue(userRef, (snap) => {
+    const data = snap.val();
+
     if (data) {
-        portafolio.forEach(a => { if(data[a.ticker] !== undefined) a.cantidad = data[a.ticker]; });
+        portafolio.forEach(a => {
+            if (data[a.ticker]) {
+                a.cantidad = data[a.ticker];
+            }
+        });
     }
+
     generarInputs();
-    // Primera renderización con datos actuales e inicialización del histórico
-    historyData.push(portafolio.reduce((sum, a) => sum + (a.precio * a.cantidad), 0));
-    if (historyData.length > 7) historyData.shift();
-    actualizarInterfaz(false);
+    actualizarInterfaz();
+
 }, { onlyOnce: true });
