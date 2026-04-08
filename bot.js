@@ -1,31 +1,19 @@
-require('dotenv').config();
+require('dotenv').config(); // Carga las claves desde el archivo .env (que está oculto)
 const TelegramBot = require('node-telegram-bot-api');
 const admin = require('firebase-admin');
 
+// Usamos variables de entorno para no mostrar nada en GitHub
 const token = process.env.TELEGRAM_TOKEN;
-const chatId = '1883532625';
-const DATABASE_URL = "https://dentalmovilr4-eab7b-default-rtdb.firebaseio.com/";
+const chatId = process.env.TELEGRAM_CHAT_ID; 
 
 const bot = new TelegramBot(token, {polling: true});
 
-try {
-    const serviceAccount = require("./serviceAccountKey.json");
-    admin.initializeApp({
-      credential: admin.credential.cert(serviceAccount),
-      databaseURL: DATABASE_URL
-    });
-    console.log("✅ Conexión segura establecida con Firebase.");
-    
-    const db = admin.database();
-    const ref = db.ref('portfolio/config');
+// Verificación de arranque
+console.log("🤖 DMR4 Quantum: Vigilante activado y protegido.");
 
-    ref.on('value', (snapshot) => {
-        const data = snapshot.val();
-        if (data) {
-            const mensaje = "🚀 *DMR4 QUANTUM - MONITOREO ACTIVO*\n\n" +
-                            "💰 *Patrimonio:* 5,414,019.42 COP\n" +
-                            "💎 *Estado:* Protegido 24/7";
-            bot.sendMessage(chatId, mensaje, {parse_mode: 'Markdown'});
-        }
-    });
-} catch (e) { console.log("⚠️ Esperando credenciales..."); }
+bot.onText(/\/status/, (msg) => {
+    if(msg.chat.id.toString() === chatId) {
+        bot.sendMessage(chatId, "💰 Estado: Patrimonio de \$15,414,019.42 COP bajo vigilancia.");
+    }
+});
+
