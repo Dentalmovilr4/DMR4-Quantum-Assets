@@ -4,3 +4,4 @@ public/js/config.js
 serviceAccountKey.json
 *.log
 
+node_modules/
