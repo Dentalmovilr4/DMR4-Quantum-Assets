@@ -1,0 +1,9 @@
+[33m8584614[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmain[m[33m, [m[1;31morigin/main[m[33m, [m[1;31morigin/HEAD[m[33m)[m HEAD@{0}: commit: Cambios rápidos DMR4
+[33m21a900e[m HEAD@{1}: commit: Cambios rápidos DMR4
+[33m14af5f3[m HEAD@{2}: commit: Cambios rápidos DMR4
+[33mb005eb9[m HEAD@{3}: commit: Cambios rápidos DMR4
+[33m6623f61[m HEAD@{4}: commit: 🛡️ Seguridad: bot.js limpiado de credenciales
+[33m9a9a7c0[m HEAD@{5}: commit: DMR4 Quantum: Forzando actualización de app.js
+[33m9be1e83[m HEAD@{6}: commit: DMR4 Quantum: Interfaz neón y lógica de activos lista
+[33mdc8e35c[m HEAD@{7}: commit: 🛡️ Seguridad: Eliminando claves y chatId del repositorio
+[33mbbb52f4[m HEAD@{8}: commit: Seguridad: Protegiendo config.js de Firebase
